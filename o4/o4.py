@@ -91,6 +91,7 @@ from o4_fstat import fstat_from_csv, fstat_iter, fstat_path, \
     fstat_split, fstat_join, get_fstat_cache, F_REVISION, F_FILE_SIZE, F_CHECKSUM, F_PATH
 from o4_progress import progress_iter, progress_show, progress_enabled
 from o4_utils import chdir, consume, o4_log, caseful_accurate
+from o4_git import is_git_hybrid, git_master_prep, git_o4_import, git_master_restore
 
 CLR = '%c[2K\r' % chr(27)
 
@@ -238,23 +239,20 @@ def o4_fstat(changelist, previous_cl, drop=None, keep=None, quiet=False, force=F
     """
 
     if os.environ.get('DEBUG', ''):
-        print(
-            f"""# o4 fstat {os.getcwd()}
+        err_print(f"""# o4 fstat {os.getcwd()}
 # changelist: {changelist}
 # previous_cl: {previous_cl}
 # drop: {drop}
 # keep: {keep}
-# quiet: {quiet}""",
-            file=sys.stderr)
-    o4_log(
-        'fstat',
-        _depot_path(),
-        changelist=changelist,
-        previous_cl=previous_cl,
-        drop=drop,
-        keep=keep,
-        quiet=quiet,
-        force=force)
+# quiet: {quiet}""")
+    o4_log('fstat',
+           _depot_path(),
+           changelist=changelist,
+           previous_cl=previous_cl,
+           drop=drop,
+           keep=keep,
+           quiet=quiet,
+           force=force)
 
     if previous_cl:
         previous_cl = int(previous_cl)
@@ -284,18 +282,16 @@ def o4_fstat(changelist, previous_cl, drop=None, keep=None, quiet=False, force=F
         # be synced to their state at the lower changelist.
         past_filenames = set(p for p, _ in map(
             fstat_path,
-            progress_iter(
-                fstat_iter(_depot_path(), changelist),
-                os.getcwd() + '/.o4/.fstat', 'fstat-reverse')) if p)
+            progress_iter(fstat_iter(_depot_path(), changelist),
+                          os.getcwd() + '/.o4/.fstat', 'fstat-reverse')) if p)
         if not keep:
             keep = set()
         if not drop:
             drop = set()
         for f in map(
                 fstat_split,
-                progress_iter(
-                    fstat_iter(_depot_path(), previous_cl, changelist),
-                    os.getcwd() + '/.o4/.fstat', 'fstat-reverse')):
+                progress_iter(fstat_iter(_depot_path(), previous_cl, changelist),
+                              os.getcwd() + '/.o4/.fstat', 'fstat-reverse')):
             if not f:
                 continue
             if f[F_PATH] not in past_filenames:
@@ -320,9 +316,8 @@ def o4_fstat(changelist, previous_cl, drop=None, keep=None, quiet=False, force=F
     if not keep:
         keep = None
 
-    fstats = progress_iter(
-        fstat_iter(_depot_path(), changelist, previous_cl),
-        os.getcwd() + '/.o4/.fstat', 'fstat')
+    fstats = progress_iter(fstat_iter(_depot_path(), changelist, previous_cl),
+                           os.getcwd() + '/.o4/.fstat', 'fstat')
     # Can't break out of fstat_iter without risking that the local
     # cache is not created, causing fstat_from_perforce to be called
     # twice, so we use an iterator that we can drain.
@@ -451,22 +446,22 @@ def o4_filter(filtertype, filters, verbose):
         sys.exit(f'*** ERROR: No arguments supplied to filter')
     elif len(funcs) == 1 and filtertype != 'drop' and not funcs[0].startswith('not('):
         if verbose:
-            print(f"# Filter {filtertype}:", funcs, file=sys.stderr)
+            err_print(f"# Filter {filtertype}:", funcs)
         combo_func = locals()[funcs[0].split('(')[0]]
     elif filtertype == 'drop':
         combo_func = 'lambda x: not(' + ' or '.join(f for f in funcs) + ')'
         if verbose:
-            print(f"# Filter {filtertype}:", combo_func, file=sys.stderr)
+            err_print(f"# Filter {filtertype}:", combo_func)
         combo_func = eval(combo_func, locals())
     elif filtertype == 'keep-any':
         combo_func = 'lambda x: ' + ' or '.join(f for f in funcs)
         if verbose:
-            print(f"# Filter {filtertype}:", combo_func, file=sys.stderr)
+            err_print(f"# Filter {filtertype}:", combo_func)
         combo_func = eval(combo_func, locals())
     elif filtertype == 'keep':
         combo_func = 'lambda x: ' + ' and '.join(f for f in funcs)
         if verbose:
-            print(f"# Filter {filtertype}:", combo_func, file=sys.stderr)
+            err_print(f"# Filter {filtertype}:", combo_func)
         combo_func = eval(combo_func, locals())
     else:
         sys.exit(f"*** ERROR: Invalid filtertype: {filtertype}")
@@ -512,10 +507,9 @@ def o4_pyforce(debug, no_revision, args: list, quiet=False):
         if f and caseful_accurate(f[F_PATH]):
             fstats.append(f)
         elif f:
-            print(
-                f"*** WARNING: Pyforce is skipping {f[F_PATH]} because it is casefully",
-                "mismatching a local file.",
-                file=sys.stderr)
+            err_print(f"*** WARNING: Pyforce is skipping {f[F_PATH]} because it is casefully"
+                      " mismatching a local file.")
+
     retries = 3
     head = _depot_path().replace('/...', '')
     while fstats:
@@ -598,10 +592,10 @@ def o4_pyforce(debug, no_revision, args: list, quiet=False):
             for a in e.args:
                 if 'clobber writable file' in a['data']:
                     fname = a['data'].split('clobber writable file')[1].strip()
-                    print("*** WARNING: Saving writable file as .bak:", fname, file=sys.stderr)
+                    err_print("*** WARNING: Saving writable file as .bak:", fname)
                     if os.path.exists(fname + '.bak'):
                         now = time.time()
-                        print(f"*** WARNING: Moved previous .bak to {fname}.{now}", file=sys.stderr)
+                        err_print(f"*** WARNING: Moved previous .bak to {fname}.{now}")
                         os.rename(fname + '.bak', f'{fname}.bak.{now}')
                     shutil.copy(fname, fname + '.bak')
                     os.chmod(fname, 0o400)
@@ -611,7 +605,7 @@ def o4_pyforce(debug, no_revision, args: list, quiet=False):
                 raise
         except P4TimeoutError as e:
             e = str(e).replace('\n', ' ')
-            print(f"# P4 TIMEOUT, RETRIES {retries}: {e}", file=sys.stderr)
+            err_print(f"# P4 TIMEOUT, RETRIES {retries}: {e}")
             retries -= 1
             if not retries:
                 sys.exit(f"{CLR}*** ERROR: Perforce timed out too many times:\n{e}")
@@ -782,27 +776,24 @@ def o4_sync(changelist,
     o4bin = find_o4bin()
 
     previous_cl = 0
-    if os.path.exists('.o4/changelist'):
-        with open('.o4/changelist') as fin:
+    if os.path.exists(SYNCED_CL_FILE):
+        with open(SYNCED_CL_FILE) as fin:
             try:
                 previous_cl = int(fin.read().strip())
             except ValueError:
-                print(
-                    "{CLR}*** WARNING: {os.getcwd()}/.o4/changelist could not be read",
-                    file=sys.stderr)
+                err_print(f"{CLR}*** WARNING: {os.getcwd()}/{SYNCED_CL_FILE} could not be read")
 
-    o4_log(
-        'sync',
-        changelist=changelist,
-        previous_cl=previous_cl,
-        seed=seed,
-        seed_move=seed_move,
-        quick=quick,
-        force=force,
-        skip_opened=skip_opened,
-        verbose=verbose,
-        gatling=gatling,
-        manifold=manifold)
+    o4_log('sync',
+           changelist=changelist,
+           previous_cl=previous_cl,
+           seed=seed,
+           seed_move=seed_move,
+           quick=quick,
+           force=force,
+           skip_opened=skip_opened,
+           verbose=verbose,
+           gatling=gatling,
+           manifold=manifold)
 
     verbose = ' -v' if verbose else ''
     force = ' -f' if force else ''
@@ -829,6 +820,11 @@ def o4_sync(changelist,
         os.remove(INCOMPLETE_INDICATOR)
     if os.path.exists(SYNCED_CL_FILE):
         os.remove(SYNCED_CL_FILE)
+
+    prep = None
+    if is_git_hybrid():
+        # TODO: Is this disabled by --move or -s or -f?
+        prep = git_master_prep(_depot_path(), previous_cl, changelist)
 
     has_open = list(Pyforce('opened', '...'))
     openf = NamedTemporaryFile(dir='.o4', mode='w+t')
@@ -924,6 +920,11 @@ def o4_sync(changelist,
     if previous_cl == actual_cl and not force:
         print(f'*** INFO: {os.getcwd()} is already synced to {actual_cl}, use -f to force a'
               f' full verification.')
+
+    if prep:
+        err_print("*** INFO: Sync from p4 is complete. Hybrid import upstream changes to git.")
+        git_o4_import(prep)
+        git_master_restore(prep)
 
 
 def get_clean_cl(opts):
@@ -1061,7 +1062,7 @@ def o4_head(paths):
                         print(f"{s['change']}", file=fout)
                     break
             else:
-                print("*** WARNING: Could not map result", s, file=sys.stderr)
+                err_print("*** WARNING: Could not map result", s)
         for r in res:
             if type(r) is not int:
                 try:
@@ -1080,10 +1081,7 @@ def o4_head(paths):
     for retry in range(3):
         try:
             end = '' if len(args) > 1 else args[0]
-            print(
-                f"# {CLR}*** INFO: ({retry+1}/3) Retrieving HEAD changelist for",
-                end,
-                file=sys.stderr)
+            err_print(f"# {CLR}*** INFO: ({retry+1}/3) Retrieving HEAD changelist for", end)
             if not end:
                 for path in args:
                     print(f"      {path}")
@@ -1178,12 +1176,12 @@ def main():
             ran = True
             o4_fail()
     except KeyboardInterrupt:
-        print('*** WARNING: aborted by user', file=sys.stderr)
+        err_print('*** WARNING: aborted by user')
         ec = 0 - SIGINT
     except Exception as e:
         from traceback import print_exc
         print_exc(file=sys.stderr)
-        print(f'*** ERROR: {e}', file=sys.stderr)
+        err_print(f'*** ERROR: {e}')
         ec = 1
 
     if ran or ec:
@@ -1253,7 +1251,7 @@ def main():
                     opts['-v'])
     except KeyboardInterrupt:
         prog = 'sync' if opts['sync'] else 'fstat'
-        print(f'*** WARNING: {prog} aborted by user', file=sys.stderr)
+        err_print(f'*** WARNING: {prog} aborted by user')
         ec = 0 - SIGINT
     except BrokenPipeError:
         print('*** ERROR: broken pipe :(', file=sys.stderr)
