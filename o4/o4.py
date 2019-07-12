@@ -509,7 +509,6 @@ def o4_pyforce(debug, no_revision, args: list, quiet=False):
         elif f:
             err_print(f"*** WARNING: Pyforce is skipping {f[F_PATH]} because it is casefully"
                       " mismatching a local file.")
-
     retries = 3
     head = _depot_path().replace('/...', '')
     while fstats:
