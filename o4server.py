@@ -13,14 +13,15 @@ from flask import Flask, request, send_file, redirect, abort, make_response
 from flask.logging import default_handler
 import o4package
 
-LOG_FORMAT = '[%(asctime)s] remote_addr=%(remote_addr)s forwarded=%(forwarded)s %(message)s'
+LOG_FORMAT = (
+    "[%(asctime)s] remote_addr=%(remote_addr)s forwarded=%(forwarded)s %(message)s"
+)
 
 
 class RequestFormatter(logging.Formatter):
-
     def format(self, record):
-        record.remote_addr = getattr(request, 'remote_addr', '-')
-        record.forwarded = request.environ.get('http_x_forwarded_for', 'not-forwarded')
+        record.remote_addr = getattr(request, "remote_addr", "-")
+        record.forwarded = request.environ.get("http_x_forwarded_for", "not-forwarded")
         return super().format(record)
 
 
@@ -32,51 +33,51 @@ workers = None
 app.logger.setLevel(logging.INFO)
 shared = Manager().dict()  # Object shared among all workers
 
-if 'O4_LOG' in os.environ:
-    o4_log = open(os.environ['O4_LOG'], 'at')
+if "O4_LOG" in os.environ:
+    o4_log = open(os.environ["O4_LOG"], "at")
 else:
     o4_log = sys.stdout
 
 
 def url(content_type, changelist, depot):
-    depot = depot.replace('//', '')
-    return f'/o4-http/{content_type}/{changelist}/{depot}'
+    depot = depot.replace("//", "")
+    return f"/o4-http/{content_type}/{changelist}/{depot}"
 
 
 def uncached(status, body, headers={}):
     resp = make_response(body, status)
     for k, v in headers.items():
         resp.headers[k] = v
-    resp.headers['Cache-Control'] = 'no-cache'
+    resp.headers["Cache-Control"] = "no-cache"
     return resp
 
 
-@app.route('/o4-http/help')
+@app.route("/o4-http/help")
 def help():
-    return send_file('o4server.txt', mimetype='text/plain')
+    return send_file("o4server.txt", mimetype="text/plain")
 
 
-@app.route('/o4-http/p4password', methods=['POST'])
+@app.route("/o4-http/p4password", methods=["POST"])
 def change_password():
-    if request.content_type != 'application/json':
-        abort(401, 'Content type must be json')
+    if request.content_type != "application/json":
+        abort(401, "Content type must be json")
     j = request.get_json()
-    prev = j.get('previous-password')
-    if prev != os.environ['P4PASSWD']:
-        abort(403, '')
-    new = j.get('new-password')
+    prev = j.get("previous-password")
+    if prev != os.environ["P4PASSWD"]:
+        abort(403, "")
+    new = j.get("new-password")
     if not new:
-        abort(403, '')
-    os.environ['P4PASSWD'] = new
+        abort(403, "")
+    os.environ["P4PASSWD"] = new
     try:
-        out = check_output(['p4', 'counter', 'change'])
-        app.logger.info('Perforce password changed by request')
-        shared['p4password'] = new
-        return uncached(204, '')
+        out = check_output(["p4", "counter", "change"])
+        app.logger.info("Perforce password changed by request")
+        shared["p4password"] = new
+        return uncached(204, "")
     except Exception as e:
-        os.environ['P4PASSWD'] = prev
-        app.logger.info(f'Problem checking new password: {e}')
-    return uncached(400, '')
+        os.environ["P4PASSWD"] = prev
+        app.logger.info(f"Problem checking new password: {e}")
+    return uncached(400, "")
 
 
 @contextlib.contextmanager
@@ -86,76 +87,86 @@ def log_time(operation, changelist, depot):
     start = time.time()
     yield ctx
     stop = time.time()
-    changelist = f'@{changelist}' if changelist else ''
-    msg = f'op={operation} object={depot}{changelist} elapsed={stop-start:.3f}'
-    if 'redir_cl' in ctx:
+    changelist = f"@{changelist}" if changelist else ""
+    msg = f"op={operation} object={depot}{changelist} elapsed={stop-start:.3f}"
+    if "redir_cl" in ctx:
         msg += f' redir={ctx["redir_cl"]}'
-    now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-    o4_log.write(f'{now} {msg}\n')
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    o4_log.write(f"{now} {msg}\n")
     o4_log.flush()
 
 
-@app.route(url('fstat', '<int:changelist>', '<path:depot>'))
+@app.route(url("fstat", "<int:changelist>", "<path:depot>"))
 def get_fstat(changelist, depot):
-    with log_time('fstat', changelist, depot) as ctx:
-        nearby = request.args.get('nearby')
+    with log_time("fstat", changelist, depot) as ctx:
+        nearby = request.args.get("nearby")
         if nearby:
             nearby = int(nearby)
 
-        status, fstat = workers.apply(o4package.get_fstat, ('//' + depot, changelist, nearby))
+        status, fstat = workers.apply(
+            o4package.get_fstat, ("//" + depot, changelist, nearby)
+        )
         if status == 200:
-            return send_file(fstat,
-                             mimetype='application/gzip',
-                             as_attachment=True,
-                             attachment_filename=os.path.basename(fstat))
+            return send_file(
+                fstat,
+                mimetype="application/gzip",
+                as_attachment=True,
+                attachment_filename=os.path.basename(fstat),
+            )
         if status // 100 == 3:
             fstat = os.path.basename(fstat)
-            ctx['redir_cl'] = redir_cl = fstat.partition('.')[0]
-            return redirect(url('fstat', int(redir_cl), depot), status)
+            ctx["redir_cl"] = redir_cl = fstat.partition(".")[0]
+            return redirect(url("fstat", int(redir_cl), depot), status)
         abort(404)
 
 
-@app.route(url('archive', '<int:changelist>', '<path:depot>'))
+@app.route(url("archive", "<int:changelist>", "<path:depot>"))
 def get_archive(changelist, depot):
-    with log_time('archive', changelist, depot) as ctx:
-        nearby = request.args.get('nearby')
+    with log_time("archive", changelist, depot) as ctx:
+        nearby = request.args.get("nearby")
         if nearby:
             nearby = int(nearby)
 
-        code, archive = workers.apply(o4package.get_archive, ('//' + depot, changelist, nearby))
+        code, archive = workers.apply(
+            o4package.get_archive, ("//" + depot, changelist, nearby)
+        )
         if code // 100 == 3:
             archive = os.path.basename(archive)
-            ctx['redir_cl'] = redir_cl = archive.partition('.')[0]
-            return redirect(url('archive', int(redir_cl), depot), code)
+            ctx["redir_cl"] = redir_cl = archive.partition(".")[0]
+            return redirect(url("archive", int(redir_cl), depot), code)
         if archive:
-            return send_file(archive,
-                             mimetype='application/gzip',
-                             as_attachment=True,
-                             attachment_filename=os.path.basename(archive))
+            return send_file(
+                archive,
+                mimetype="application/gzip",
+                as_attachment=True,
+                attachment_filename=os.path.basename(archive),
+            )
         if code == 202:
-            return 'In progress', 202
+            return "In progress", 202
         abort(code)
 
 
-@app.route('/o4-http/changelists/<path:depot>')
+@app.route("/o4-http/changelists/<path:depot>")
 def get_changelists(depot):
-    with log_time('get_changelists', None, depot):
-        changelists = workers.apply(o4package.get_available_changelists, ('//' + depot,))
-        format = request.headers.get('accept', 'text/plain')
-        if format == 'text/html':
-            body = '<ol><li>' + '</li><li>'.join(changelists) + '</li></ol>'
-        elif format == 'application/json':
+    with log_time("get_changelists", None, depot):
+        changelists = workers.apply(
+            o4package.get_available_changelists, ("//" + depot,)
+        )
+        format = request.headers.get("accept", "text/plain")
+        if format == "text/html":
+            body = "<ol><li>" + "</li><li>".join(changelists) + "</li></ol>"
+        elif format == "application/json":
             body = json.dumps(changelists)
         else:
-            body = '\n'.join(changelists) + '\n'
+            body = "\n".join(changelists) + "\n"
         return uncached(200, body)
 
 
 def purge():
-    '''
+    """
     A never-returning function that periodically removes fstat and archive
     files if need be.
-    '''
+    """
     from random import shuffle
     import o4_config
     import o4_fstat
@@ -200,18 +211,19 @@ def purge():
                 purge_one(d)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import threading
+
     threading.Thread(target=purge, daemon=True).start()
-    os.environ['NOO4SERVER'] = 'true'
-    shared['p4password'] = os.environ['P4PASSWD']
+    os.environ["NOO4SERVER"] = "true"
+    shared["p4password"] = os.environ["P4PASSWD"]
 
     def share(*args):
         o4package.shared = args[0]
 
     workers = Pool(processes=4, initializer=share, initargs=(shared,))
     try:
-        app.run(host='0.0.0.0')
+        app.run(host="0.0.0.0")
     except:
         workers.close()
         workers.join()

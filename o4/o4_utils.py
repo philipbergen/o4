@@ -18,7 +18,7 @@ class chdir(object):
             os.makedirs(self.path)
         except (OSError, IOError) as e:
             if e.errno not in (EEXIST, EISDIR):
-                raise Exception('Error creating %s: %s' % (self.path, e))
+                raise Exception("Error creating %s: %s" % (self.path, e))
         os.chdir(self.path)
 
     def __exit__(self, etype, evalue, traceback):
@@ -33,9 +33,11 @@ def consume(iterator, n=None):
     # Use functions that consume iterators at C speed.
     if n is None:
         from collections import deque
+
         deque(iterator, maxlen=0)
     else:
         from itertools import islice
+
         next(islice(iterator, n, n), None)
 
 
@@ -54,7 +56,7 @@ class AtomicFile(object):
     raises an error. The file need not initially exist.
     """
 
-    def __init__(self, filename, mode='w'):
+    def __init__(self, filename, mode="w"):
         self.original_name = filename
         self.dir = os.path.dirname(filename)
         self.mode = mode
@@ -62,12 +64,13 @@ class AtomicFile(object):
     def __enter__(self):
         import uuid
         import shutil
+
         try:
             os.makedirs(self.dir)
         except OSError:
             pass
-        self.newfile = open(os.path.join(self.dir, str(uuid.uuid1())), 'w')
-        if self.mode == 'r+':
+        self.newfile = open(os.path.join(self.dir, str(uuid.uuid1())), "w")
+        if self.mode == "r+":
             shutil.copyfileobj(open(self.original_name), self.newfile)
             self.newfile.seek(0)
         return self.newfile
@@ -86,12 +89,12 @@ def caseful_accurate(fname, dirname_cache={}):
     current file system state.
     """
 
-    if sys.platform == 'darwin' and os.path.lexists(fname):
-        while fname != '.':
+    if sys.platform == "darwin" and os.path.lexists(fname):
+        while fname != ".":
             try:
-                dname, bname = fname.rsplit('/', 1)
+                dname, bname = fname.rsplit("/", 1)
             except ValueError:
-                dname = '.'
+                dname = "."
                 bname = fname
             dlist = dirname_cache.get(dname)
             if not dlist:
@@ -110,13 +113,16 @@ def o4_log(operation, *args, **kw):
     the assumptions/preconditions at the time.
     """
     import time
-    with open(f'.o4/{operation}.log', 'at+') as fout:
-        print(time.ctime(),
-              operation,
-              *[f'{k}={v}' for k, v in kw.items()],
-              *args,
-              sep='\t',
-              file=fout)
+
+    with open(f".o4/{operation}.log", "at+") as fout:
+        print(
+            time.ctime(),
+            operation,
+            *[f"{k}={v}" for k, v in kw.items()],
+            *args,
+            sep="\t",
+            file=fout,
+        )
 
 
 ##

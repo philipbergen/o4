@@ -30,9 +30,10 @@ import sys
 
 def crc(paths):
     import hashlib
+
     hash_md5 = hashlib.md5()
     for path in paths:
-        with open(path, 'rb') as fin:
+        with open(path, "rb") as fin:
             hash_md5.update(fin.read())
     return hash_md5.hexdigest()
 
@@ -47,64 +48,72 @@ def main():
 
     def git_config(key):
         try:
-            return check_output(['git', 'config', '--get', key],
-                                encoding=sys.stdin.encoding).strip()
+            return check_output(
+                ["git", "config", "--get", key], encoding=sys.stdin.encoding
+            ).strip()
         except CalledProcessError:
-            return ''
+            return ""
 
     opts = docopt(__doc__)
-    name = git_config('user.name')
-    mail = git_config('user.email')
+    name = git_config("user.name")
+    mail = git_config("user.email")
     from configparser import ConfigParser
+
     cfg = ConfigParser(strict=False, interpolation=None)
     try:
-        with open(opts['-o'], 'rt') as fin:
-            lines = [line for line in fin if '=' in line]
+        with open(opts["-o"], "rt") as fin:
+            lines = [line for line in fin if "=" in line]
     except FileNotFoundError:
-        lines = TEMPLATE.format(major=1,
-                                minor=0,
-                                step=0,
-                                ts=datetime.now(),
-                                rm='',
-                                py='',
-                                name=name,
-                                mail=mail,
-                                product=opts['-o'])
-        lines = [line + '\n' for line in lines.split('\n') if '=' in line]
-    cfg.read_string('[DEFAULT]\n' + ''.join(lines))
-    cfg = cfg['DEFAULT']
+        lines = TEMPLATE.format(
+            major=1,
+            minor=0,
+            step=0,
+            ts=datetime.now(),
+            rm="",
+            py="",
+            name=name,
+            mail=mail,
+            product=opts["-o"],
+        )
+        lines = [line + "\n" for line in lines.split("\n") if "=" in line]
+    cfg.read_string("[DEFAULT]\n" + "".join(lines))
+    cfg = cfg["DEFAULT"]
 
-    rm = crc([opts['-r']])
-    py = crc(path for path in opts['<sources>'] if not path.endswith('/version.py'))
-    major, minor, step = parse(cfg['version'])
-    if rm != parse(cfg['req_md5']):
+    rm = crc([opts["-r"]])
+    py = crc(path for path in opts["<sources>"] if not path.endswith("/version.py"))
+    major, minor, step = parse(cfg["version"])
+    if rm != parse(cfg["req_md5"]):
         step = 0
         minor += 1
-    elif py != parse(cfg['py_md5']):
+    elif py != parse(cfg["py_md5"]):
         step += 1
 
-    with open(opts['-o'], 'wt') as fout:
+    with open(opts["-o"], "wt") as fout:
         try:
             fout.write(
-                TEMPLATE.format(major=major,
-                                minor=minor,
-                                step=step,
-                                ts=datetime.now(),
-                                rm=rm,
-                                py=py,
-                                name=name,
-                                mail=mail,
-                                product=opts['-o']))
+                TEMPLATE.format(
+                    major=major,
+                    minor=minor,
+                    step=step,
+                    ts=datetime.now(),
+                    rm=rm,
+                    py=py,
+                    name=name,
+                    mail=mail,
+                    product=opts["-o"],
+                )
+            )
             print(f"{opts['-o']}: {major}.{minor}.{step}")
         except:
             from traceback import print_exc
+
             print_exc()
             fout.seek(0, 0)
             fout.truncate()
-            fout.write(''.join(lines))
+            fout.write("".join(lines))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
 
 ##

@@ -17,17 +17,18 @@ import sys
 
 def main():
     import docopt
+
     opts = docopt.docopt(__doc__)
-    if opts['-W']:
-        os.environ['P4PASSWD'] = opts['-W']
-    if opts['-P']:
-        os.environ['P4PORT'] = opts['-P']
-    if opts['-U']:
-        os.environ['P4USER'] = opts['-U']
-    if opts['-C']:
-        os.environ['P4CLIENT'] = opts['-C']
+    if opts["-W"]:
+        os.environ["P4PASSWD"] = opts["-W"]
+    if opts["-P"]:
+        os.environ["P4PORT"] = opts["-P"]
+    if opts["-U"]:
+        os.environ["P4USER"] = opts["-U"]
+    if opts["-C"]:
+        os.environ["P4CLIENT"] = opts["-C"]
     print(opts)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
